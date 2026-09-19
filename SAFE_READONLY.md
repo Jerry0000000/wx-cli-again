@@ -78,15 +78,23 @@ The following remain in the source tree for upstream traceability but are unreac
 - media extraction
 - key re-extraction / key mutation
 
-## Local IPC caveat
+## Windows key protection
 
-The Windows daemon uses a named pipe. The request whitelist blocks non-readonly operations, but a future hardening step should add an explicit current-user SID ACL to protect read access from unrelated local processes.
+On Windows, the key document is serialized, protected with `CryptProtectData` in **current-user scope**, and stored inside a small JSON envelope. `CRYPTPROTECT_LOCAL_MACHINE` is intentionally not used.
 
-## Key-at-rest caveat
+This means the ciphertext is tied to the Windows user profile/credentials and normally to the same machine. A legacy plaintext key file is migrated to DPAPI on its first successful read.
 
-`all_keys.json` remains local plaintext in the current upstream-compatible implementation and is excluded by `.gitignore`.
+## Windows local IPC ACL
 
-A future Windows hardening milestone should use DPAPI for keys at rest.
+The daemon named pipe is created with a protected DACL based on:
+
+```text
+D:P(A;;GA;;;OW)(A;;GA;;;SY)
+```
+
+That grants full pipe access to the object owner and LocalSystem, without deliberately granting `Everyone`, anonymous users, or the generic built-in Users group.
+
+Administrators can still take ownership or otherwise override local OS security. This is a same-host user-isolation control, not a boundary against a machine administrator.
 
 ## What this does not promise
 
