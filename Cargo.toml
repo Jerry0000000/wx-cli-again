@@ -60,6 +60,7 @@ roxmltree = "0.20"
 # IPC Windows named pipe（Unix 直接用 tokio::net::UnixListener）
 [target.'cfg(windows)'.dependencies]
 interprocess = { version = "2", features = ["tokio"] }
+widestring = "1.2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -72,6 +73,7 @@ windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_System_Memory",
     "Win32_System_Com",
+    "Win32_Security_Cryptography",
     "Win32_UI_Shell",
 ] }
 
