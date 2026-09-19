@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::path::Path;
 
 /// File-format marker for Windows DPAPI protected JSON.
+#[cfg(windows)]
 const DPAPI_FORMAT: &str = "wx-cli-dpapi-v1";
 
 /// Read the key document.
@@ -39,9 +40,18 @@ pub fn read_json(path: &Path) -> Result<serde_json::Value> {
         }
     }
 
-    // Legacy plaintext input is accepted so an old installation can be
-    // migrated safely on the next write.
-    serde_json::from_str(&content).context("密钥 JSON 格式错误")
+    // Legacy plaintext input is accepted for compatibility. On Windows
+    // Safe Readonly immediately migrates it in place to current-user DPAPI,
+    // so a successful read never leaves known plaintext keys at rest.
+    let parsed: serde_json::Value =
+        serde_json::from_str(&content).context("密钥 JSON 格式错误")?;
+
+    #[cfg(windows)]
+    {
+        write_json(path, &parsed).context("将旧版明文密钥迁移到 DPAPI 失败")?;
+    }
+
+    Ok(parsed)
 }
 
 /// Write a key document.
