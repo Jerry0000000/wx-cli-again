@@ -53,6 +53,10 @@ If this encrypted read-only path fails, Safe Readonly **fails closed**.
 
 It does **not** fall back to a plaintext full-database cache. On daemon startup, stale plaintext DB cache files left by older builds are removed.
 
+On Windows, `all_keys.json` is stored as a current-user **DPAPI** envelope. The raw SQLCipher keys are not left as plaintext at rest. Legacy plaintext key files are automatically migrated on first successful read. The DPAPI blob is intended to be decryptable only by the same Windows user on the same machine.
+
+The Windows daemon named pipe is created with a protected DACL granting access to the pipe owner and LocalSystem, rather than relying on the broader default named-pipe ACL.
+
 ## WeChat process interaction
 
 On Windows, first-time `wx init` still needs to locate `Weixin.exe` and read process memory to recover the local SQLCipher keys.
@@ -104,6 +108,13 @@ cargo check
 ```
 
 See [SAFE_READONLY.md](SAFE_READONLY.md) for the threat model and hard boundaries.
+
+### Windows local-secret hardening
+
+- current-user DPAPI protects the key store at rest
+- legacy plaintext key stores are migrated automatically
+- the daemon named pipe uses an explicit owner/System ACL
+- no `Everyone` or anonymous ACE is intentionally granted
 
 ## Scope
 
