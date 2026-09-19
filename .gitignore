@@ -28,3 +28,11 @@ __pycache__/
 Thumbs.db
 find_all_keys_macos
 .claude/worktrees/
+
+# Safe-readonly local state / exports
+.wx-cli/
+cache/
+exports/
+wx-export/
+*.key
+*.secret
