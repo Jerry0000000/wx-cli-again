@@ -1,0 +1,30 @@
+name: safe-readonly-ci
+
+on:
+  push:
+    branches: [safe-readonly]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-check:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo check
+        run: cargo check --locked
+
+  safety-static-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Safe Readonly guards
+        shell: powershell
+        run: powershell -ExecutionPolicy Bypass -File .\scripts\verify-safe-readonly.ps1
