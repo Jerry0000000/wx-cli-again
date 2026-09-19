@@ -5,6 +5,7 @@ mod scanner;
 mod daemon;
 mod cli;
 mod attachment;
+mod secret_store;
 
 /// Hard safety boundary for this fork. Keep this true in public builds.
 pub(crate) const SAFE_READONLY: bool = true;
