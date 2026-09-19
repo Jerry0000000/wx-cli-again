@@ -26,9 +26,8 @@ if ($main -notmatch "SAFE_READONLY:\s*bool\s*=\s*true") {
 $cli = Get-Content "src/cli/mod.rs" -Raw
 foreach ($needle in @(
     "ensure_safe_command",
-    "禁止 --force",
-    "禁止输出完整数据库密钥",
-    "此命令已禁用"
+    "Commands::Init { force: true",
+    "show_secrets: true"
 )) {
     if ($cli -notmatch [regex]::Escape($needle)) {
         throw "CLI safety gate missing: $needle"
@@ -36,15 +35,24 @@ foreach ($needle in @(
 }
 
 $server = Get-Content "src/daemon/server.rs" -Raw
-if ($server -notmatch [regex]::Escape("daemon 拒绝该请求")) {
-    throw "Daemon request whitelist missing"
+foreach ($needle in @(
+    "crate::SAFE_READONLY",
+    "Request::Ping",
+    "Request::History",
+    "Request::Search",
+    "Request::Timeline"
+)) {
+    if ($server -notmatch [regex]::Escape($needle)) {
+        throw "Daemon request whitelist missing: $needle"
+    }
 }
 
 $cache = Get-Content "src/daemon/cache.rs" -Raw
 foreach ($needle in @(
-    "拒绝回退到明文解密缓存",
-    "plaintext DB cache path is disabled",
-    "禁止生成或读取明文数据库缓存"
+    "crate::SAFE_READONLY",
+    "SQLCipher",
+    "open_query_conn()",
+    "plaintext DB cache path is disabled"
 )) {
     if ($cache -notmatch [regex]::Escape($needle)) {
         throw "Plaintext-cache guard missing: $needle"
@@ -52,17 +60,17 @@ foreach ($needle in @(
 }
 
 $query = Get-Content "src/daemon/query.rs" -Raw
-$allowedFns = @(
+foreach ($needle in @(
+    "open_query_conn",
     "session_last_timestamp",
     "load_names",
     "q_sessions",
     "load_group_nicknames",
     "load_group_nickname_maps",
     "q_members"
-)
-foreach ($fn in $allowedFns) {
-    if ($query -notmatch $fn) {
-        throw "Expected query function missing: $fn"
+)) {
+    if ($query -notmatch [regex]::Escape($needle)) {
+        throw "Expected readonly query path missing: $needle"
     }
 }
 
