@@ -134,6 +134,26 @@ async fn handle_connection_windows(
 }
 
 async fn dispatch(req: Request, db: &DbCache, names: &tokio::sync::RwLock<Arc<Names>>) -> Response {
+    // Defense in depth: callers that bypass the CLI still get the same
+    // read-only request surface over the local socket/named pipe.
+    if crate::SAFE_READONLY
+        && !matches!(
+            &req,
+            Request::Ping
+                | Request::Sessions { .. }
+                | Request::History { .. }
+                | Request::Search { .. }
+                | Request::Contacts { .. }
+                | Request::Members { .. }
+                | Request::Stats { .. }
+                | Request::Timeline { .. }
+        )
+    {
+        return Response::err(
+            "safe-readonly: daemon 拒绝该请求；该接口不在只读白名单中",
+        );
+    }
+
     use super::query;
     use crate::ipc::Request::*;
 
