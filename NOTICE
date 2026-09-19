@@ -1,0 +1,14 @@
+wx-cli Safe Readonly
+Copyright 2026 Jerry0000000
+
+This repository is a derivative work based on wx-cli / wx-cli-again source code
+distributed under the Apache License, Version 2.0.
+
+Safety-focused modifications include command/IPC whitelisting, encrypted
+read-only fail-closed query behavior, and plaintext-cache suppression.
+
+Upstream snapshot used for this fork:
+https://github.com/jackwener/wx-cli-again
+commit 077a54cbfe679bda963cd038d8440422907fc797
+
+The Apache-2.0 LICENSE in this repository applies to the distributed work.
