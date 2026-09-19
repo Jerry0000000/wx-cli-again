@@ -28,3 +28,13 @@ jobs:
       - name: Verify Safe Readonly guards
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File .\scripts\verify-safe-readonly.ps1
+
+  windows-security-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: DPAPI current-user round trip
+        run: cargo test --locked dpapi_round_trip_for_current_user
+      - name: Named-pipe security descriptor
+        run: cargo test --locked protected_pipe_security_descriptor_builds
