@@ -103,8 +103,8 @@ async fn async_run() -> Result<()> {
     names.msg_db_keys = msg_db_keys;
     names.biz_msg_db_keys = biz_msg_db_keys;
 
-    let _ = db.get("session/session.db").await;
-    let _ = db.get("sns/sns.db").await;
+    // Warm only through the encrypted SQLCipher read-only path.
+    let _ = db.open_query_conn("session/session.db").await;
     eprintln!("[daemon] 预热完成，联系人 {} 个", names.map.len());
 
     // 包一层内部 Arc：IPC 请求取 guard 后只做 Arc::clone（O(1)），
