@@ -103,6 +103,20 @@ impl DbCache {
     ) -> Result<Self> {
         tokio::fs::create_dir_all(&cache_dir).await?;
 
+        // Safe mode never keeps plaintext DB caches. Purge artifacts left by
+        // older builds before the daemon accepts any query.
+        if crate::SAFE_READONLY {
+            if let Ok(entries) = std::fs::read_dir(&cache_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() {
+                        let _ = std::fs::remove_file(path);
+                    }
+                }
+            }
+            let _ = std::fs::remove_file(&mtime_file);
+        }
+
         let cache = DbCache {
             db_dir,
             cache_dir,
@@ -114,7 +128,9 @@ impl DbCache {
             save_lock: Mutex::new(()),
         };
 
-        cache.load_persistent().await;
+        if !crate::SAFE_READONLY {
+            cache.load_persistent().await;
+        }
         Ok(cache)
     }
 
@@ -327,6 +343,13 @@ impl DbCache {
                 return Ok(Some((conn, CacheMode::Online)));
             }
             Err(e) => {
+                if crate::SAFE_READONLY {
+                    anyhow::bail!(
+                        "safe-readonly: SQLCipher 只读打开失败，拒绝回退到明文解密缓存 {}: {:#}",
+                        rel_key,
+                        e
+                    );
+                }
                 eprintln!(
                     "[cache] online 打开失败 {}，回退解密缓存: {:#}",
                     rel_key, e
@@ -451,10 +474,18 @@ impl DbCache {
     /// WeChat 在写消息时只 append WAL（除非触发 checkpoint），因此 path 2 是常态；
     /// 这条路径把"每次请求都全量解密 ~1.8GB DB（~120s）"压到"只解 WAL 帧（典型 < 10s）"。
     pub async fn get(&self, rel_key: &str) -> Result<Option<PathBuf>> {
+        if crate::SAFE_READONLY {
+            anyhow::bail!(
+                "safe-readonly: 禁止生成或读取明文数据库缓存；请使用 open_query_conn()"
+            );
+        }
         Ok(self.get_with_mode(rel_key).await?.map(|r| r.path))
     }
 
     pub async fn get_with_mode(&self, rel_key: &str) -> Result<Option<CacheResolve>> {
+        if crate::SAFE_READONLY {
+            anyhow::bail!("safe-readonly: plaintext DB cache path is disabled");
+        }
         let Some((epoch_start, enc_key_hex)) = self.snapshot_key_for_decrypt(rel_key) else {
             return Ok(None);
         };
