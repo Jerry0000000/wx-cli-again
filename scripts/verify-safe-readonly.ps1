@@ -47,6 +47,29 @@ foreach ($needle in @(
     }
 }
 
+foreach ($needle in @(
+    "security_descriptor",
+    "D:P(A;;GA;;;OW)(A;;GA;;;SY)",
+    "safe_pipe_security_descriptor"
+)) {
+    if ($server -notmatch [regex]::Escape($needle)) {
+        throw "Windows named-pipe ACL guard missing: $needle"
+    }
+}
+
+$secrets = Get-Content "src/secret_store.rs" -Raw
+foreach ($needle in @(
+    "CryptProtectData",
+    "CryptUnprotectData",
+    "CRYPTPROTECT_UI_FORBIDDEN",
+    "wx-cli-dpapi-v1",
+    "current-user"
+)) {
+    if ($secrets -notmatch [regex]::Escape($needle)) {
+        throw "DPAPI key-store guard missing: $needle"
+    }
+}
+
 $cache = Get-Content "src/daemon/cache.rs" -Raw
 foreach ($needle in @(
     "crate::SAFE_READONLY",
