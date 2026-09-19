@@ -93,6 +93,16 @@ fn safe_pipe_security_descriptor(
         .map_err(|e| anyhow::anyhow!("解析 named-pipe 安全描述符失败: {e}"))
 }
 
+#[cfg(all(test, windows))]
+mod windows_pipe_security_tests {
+    use super::*;
+
+    #[test]
+    fn protected_pipe_security_descriptor_builds() {
+        safe_pipe_security_descriptor().expect("protected pipe security descriptor");
+    }
+}
+
 #[cfg(windows)]
 async fn serve_windows(
     db: Arc<DbCache>,
