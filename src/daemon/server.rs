@@ -78,19 +78,46 @@ async fn handle_connection_unix(
 }
 
 #[cfg(windows)]
+fn safe_pipe_security_descriptor(
+) -> Result<interprocess::os::windows::security_descriptor::SecurityDescriptor> {
+    use interprocess::os::windows::security_descriptor::SecurityDescriptor;
+    use widestring::U16CString;
+
+    // Protected DACL:
+    // - OW (Owner Rights): the account that owns this process/object
+    // - SY (LocalSystem): required for normal OS administration/recovery
+    // No Everyone / Anonymous / Builtin Users ACE is granted.
+    let sddl = U16CString::from_str("D:P(A;;GA;;;OW)(A;;GA;;;SY)")
+        .map_err(|e| anyhow::anyhow!("构造 named-pipe SDDL 失败: {e}"))?;
+    SecurityDescriptor::deserialize(sddl.as_ucstr())
+        .map_err(|e| anyhow::anyhow!("解析 named-pipe 安全描述符失败: {e}"))
+}
+
+#[cfg(all(test, windows))]
+mod windows_pipe_security_tests {
+    use super::*;
+
+    #[test]
+    fn protected_pipe_security_descriptor_builds() {
+        safe_pipe_security_descriptor().expect("protected pipe security descriptor");
+    }
+}
+
+#[cfg(windows)]
 async fn serve_windows(
     db: Arc<DbCache>,
     names: Arc<tokio::sync::RwLock<Arc<Names>>>,
 ) -> Result<()> {
     use interprocess::local_socket::{tokio::prelude::*, GenericNamespaced, ListenerOptions};
+    use interprocess::os::windows::local_socket::ListenerOptionsExt as _;
 
-    // interprocess 的 GenericNamespaced 在 Windows 上会自动拼接 `\\.\pipe\` 前缀，
-    // 这里必须传相对名；client 端用 `\\.\pipe\wx-cli-daemon` 直接打开可以对上
+    // interprocess 的 GenericNamespaced 在 Windows 上会自动拼接 `\\.\pipe\` 前缀。
     let name = "wx-cli-daemon".to_ns_name::<GenericNamespaced>()?;
-    let opts = ListenerOptions::new().name(name);
+    let sd = safe_pipe_security_descriptor()?;
+    let opts = ListenerOptions::new().name(name).security_descriptor(sd);
     let listener = opts.create_tokio()?;
 
-    eprintln!("[server] 监听 \\\\.\\pipe\\wx-cli-daemon");
+    eprintln!("[server] 监听 \\\\.\\pipe\\wx-cli-daemon（当前用户 ACL）");
 
     loop {
         let conn = listener.accept().await?;
@@ -134,6 +161,26 @@ async fn handle_connection_windows(
 }
 
 async fn dispatch(req: Request, db: &DbCache, names: &tokio::sync::RwLock<Arc<Names>>) -> Response {
+    // Defense in depth: callers that bypass the CLI still get the same
+    // read-only request surface over the local socket/named pipe.
+    if crate::SAFE_READONLY
+        && !matches!(
+            &req,
+            Request::Ping
+                | Request::Sessions { .. }
+                | Request::History { .. }
+                | Request::Search { .. }
+                | Request::Contacts { .. }
+                | Request::Members { .. }
+                | Request::Stats { .. }
+                | Request::Timeline { .. }
+        )
+    {
+        return Response::err(
+            "safe-readonly: daemon 拒绝该请求；该接口不在只读白名单中",
+        );
+    }
+
     use super::query;
     use crate::ipc::Request::*;
 
@@ -404,10 +451,7 @@ async fn reload_config(
     use crate::config;
 
     let cfg = config::load_config()?;
-    let keys_content = tokio::fs::read_to_string(&cfg.keys_file)
-        .await
-        .map_err(|e| anyhow::anyhow!("读取密钥文件 {:?} 失败: {}", cfg.keys_file, e))?;
-    let keys_raw: serde_json::Value = serde_json::from_str(&keys_content)?;
+    let keys_raw = crate::secret_store::read_json(&cfg.keys_file)?;
     let all_keys = extract_keys(&keys_raw);
     let key_count = all_keys.len();
     db.replace_keys(all_keys.clone()).await;

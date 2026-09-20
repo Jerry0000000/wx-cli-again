@@ -26,7 +26,7 @@ pub fn cmd_init(force: bool, hook_seconds: Option<u64>) -> Result<()> {
                     && keys_path.exists()
                 {
                     println!("已初始化，数据目录: {}", db_dir);
-                    println!("如需重新扫描密钥，使用 --force");
+                    println!("Safe Readonly 已初始化；不会自动重复扫描微信进程");
                     // 仍检查磁盘上是否有未收录的分片
                     if let Ok(existing) = load_existing_entries(&keys_path, Path::new(db_dir)) {
                         let missing = scanner::missing_encrypted_dbs(Path::new(db_dir), &existing);
@@ -121,8 +121,11 @@ pub fn cmd_init(force: bool, hook_seconds: Option<u64>) -> Result<()> {
             }),
         );
     }
-    std::fs::write(&keys_file_path, serde_json::to_string_pretty(&keys_json)?)
-        .context("写入 all_keys.json 失败")?;
+    crate::secret_store::write_json(
+        &keys_file_path,
+        &serde_json::Value::Object(keys_json),
+    )
+    .context("安全写入数据库密钥失败")?;
     println!(
         "成功保存 {} 个数据库密钥（本次新匹配 {}）",
         entries.len(),
@@ -257,8 +260,7 @@ fn load_existing_entries(keys_path: &Path, db_dir: &Path) -> Result<Vec<KeyEntry
     if !keys_path.exists() {
         return Ok(Vec::new());
     }
-    let content = std::fs::read_to_string(keys_path)?;
-    let value: serde_json::Value = serde_json::from_str(&content)?;
+    let value = crate::secret_store::read_json(keys_path)?;
     let mut out = Vec::new();
     let Some(obj) = value.as_object() else {
         return Ok(out);

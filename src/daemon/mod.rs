@@ -72,10 +72,7 @@ async fn async_run() -> Result<()> {
     eprintln!("[daemon] DB_DIR: {}", cfg.db_dir.display());
 
     // 加载密钥
-    let keys_content = tokio::fs::read_to_string(&cfg.keys_file)
-        .await
-        .map_err(|e| anyhow::anyhow!("读取密钥文件 {:?} 失败: {}", cfg.keys_file, e))?;
-    let keys_raw: serde_json::Value = serde_json::from_str(&keys_content)?;
+    let keys_raw = crate::secret_store::read_json(&cfg.keys_file)?;
     let all_keys = extract_keys(&keys_raw);
     eprintln!("[daemon] 密钥数量: {}", all_keys.len());
     warn_unknown_shards(&cfg.db_dir, &all_keys);
@@ -103,8 +100,8 @@ async fn async_run() -> Result<()> {
     names.msg_db_keys = msg_db_keys;
     names.biz_msg_db_keys = biz_msg_db_keys;
 
-    let _ = db.get("session/session.db").await;
-    let _ = db.get("sns/sns.db").await;
+    // Warm only through the encrypted SQLCipher read-only path.
+    let _ = db.open_query_conn("session/session.db").await;
     eprintln!("[daemon] 预热完成，联系人 {} 个", names.map.len());
 
     // 包一层内部 Arc：IPC 请求取 guard 后只做 Arc::clone（O(1)），

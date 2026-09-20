@@ -179,8 +179,8 @@ fn meta_for_global_query(
 }
 
 async fn session_last_timestamp(db: &DbCache, username: &str) -> Option<i64> {
-    let path = match db.get("session/session.db").await {
-        Ok(Some(path)) => path,
+    let conn = match db.open_query_conn("session/session.db").await {
+        Ok(Some((conn, _))) => conn,
         Ok(None) => return None,
         Err(e) => {
             eprintln!(
@@ -194,7 +194,6 @@ async fn session_last_timestamp(db: &DbCache, username: &str) -> Option<i64> {
     let username = username.to_string();
     let username_for_query = username.clone();
     match tokio::task::spawn_blocking(move || -> Result<Option<i64>> {
-        let conn = Connection::open(&path)?;
         let ts = conn
             .query_row(
                 "SELECT last_timestamp FROM SessionTable WHERE username = ?",
@@ -226,13 +225,11 @@ async fn session_last_timestamp(db: &DbCache, username: &str) -> Option<i64> {
 
 /// 加载联系人缓存（从 contact/contact.db）
 pub async fn load_names(db: &DbCache) -> Result<Names> {
-    let path = db.get("contact/contact.db").await?;
+    let opened = db.open_query_conn("contact/contact.db").await?;
     let mut map = HashMap::new();
     let mut verify_flags: HashMap<String, i64> = HashMap::new();
-    if let Some(p) = path {
-        let p2 = p.clone();
+    if let Some((conn, _)) = opened {
         let rows: Vec<(String, String, String, i64)> = tokio::task::spawn_blocking(move || {
-            let conn = Connection::open(&p2).context("打开 contact.db 失败")?;
             let mut stmt =
                 conn.prepare("SELECT username, nick_name, remark, verify_flag FROM contact")?;
             let rows = stmt
@@ -284,16 +281,14 @@ pub async fn q_sessions(
     with_meta: bool,
     debug_source: bool,
 ) -> Result<Value> {
-    let path = db
-        .get("session/session.db")
+    let (conn, _) = db
+        .open_query_conn("session/session.db")
         .await?
-        .context("无法解密 session.db")?;
+        .context("safe-readonly: 无法以 SQLCipher READ_ONLY 打开 session.db")?;
 
-    let path2 = path.clone();
     let limit_val = limit;
     let rows: Vec<(String, i64, Vec<u8>, i64, i64, String, String)> =
         tokio::task::spawn_blocking(move || {
-            let conn = Connection::open(&path2)?;
             let mut stmt = conn.prepare(
                 "SELECT username, unread_count, summary, last_timestamp,
                     last_msg_type, last_msg_sender, last_sender_display_name
@@ -1723,12 +1718,11 @@ async fn load_group_nicknames(
     if !chat_username.contains("@chatroom") {
         return Ok(HashMap::new());
     }
-    let Some(contact_p) = db.get("contact/contact.db").await? else {
+    let Some((conn, _)) = db.open_query_conn("contact/contact.db").await? else {
         return Ok(HashMap::new());
     };
     let chat = chat_username.to_string();
     tokio::task::spawn_blocking(move || {
-        let conn = Connection::open(&contact_p)?;
         Ok::<_, anyhow::Error>(load_group_nickname_map_from_conn(&conn, &chat, None))
     })
     .await?
@@ -1741,11 +1735,10 @@ async fn load_group_nickname_maps(
     if chat_usernames.is_empty() {
         return Ok(HashMap::new());
     }
-    let Some(contact_p) = db.get("contact/contact.db").await? else {
+    let Some((conn, _)) = db.open_query_conn("contact/contact.db").await? else {
         return Ok(HashMap::new());
     };
     tokio::task::spawn_blocking(move || {
-        let conn = Connection::open(&contact_p)?;
         let mut out = HashMap::new();
         for chat in chat_usernames {
             let nicknames = load_group_nickname_map_from_conn(&conn, &chat, None);
@@ -3397,13 +3390,11 @@ pub async fn q_members(db: &DbCache, names: &Names, chat: &str) -> Result<Value>
     let names_map = names.map.clone();
 
     // 优先路径：contact.db → chatroom_member + chat_room（完整成员列表）
-    if let Some(contact_p) = db.get("contact/contact.db").await? {
+    if let Some((conn, _)) = db.open_query_conn("contact/contact.db").await? {
         let uname2 = username.clone();
         let names_map2 = names_map.clone();
 
         let members_opt: Option<Vec<Value>> = tokio::task::spawn_blocking(move || {
-            let conn = Connection::open(&contact_p)?;
-
             let has_table: bool = conn
                 .query_row(
                     "SELECT 1 FROM sqlite_master WHERE type='table' AND name='chatroom_member'",

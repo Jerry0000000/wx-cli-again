@@ -25,7 +25,7 @@ pub mod unread;
 pub mod watch;
 
 use self::output::OutputOpts;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 
 /// Clap `value_parser` for `--type`: must accept every slug/`type_id` and numeric codes
@@ -441,6 +441,44 @@ pub enum DaemonCommands {
     },
 }
 
+fn ensure_safe_command(cmd: &Commands) -> Result<()> {
+    if !crate::SAFE_READONLY {
+        return Ok(());
+    }
+
+    match cmd {
+        Commands::Init { force: false, .. }
+        | Commands::Sessions { .. }
+        | Commands::History { .. }
+        | Commands::Search { .. }
+        | Commands::Contacts { .. }
+        | Commands::Export { .. }
+        | Commands::Members { .. }
+        | Commands::Stats { .. }
+        | Commands::Doctor { .. }
+        | Commands::Timeline { .. }
+        | Commands::Daemon { .. } => Ok(()),
+
+        Commands::Key {
+            action: KeyAction::List {
+                show_secrets: false,
+                ..
+            },
+        } => Ok(()),
+
+        Commands::Init { force: true, .. } => {
+            bail!("safe-readonly: 禁止 --force 重新扫描微信进程")
+        }
+        Commands::Key {
+            action: KeyAction::List { show_secrets: true, .. },
+        } => bail!("safe-readonly: 禁止输出完整数据库密钥"),
+
+        _ => bail!(
+            "safe-readonly: 此命令已禁用；仅允许首次 init、sessions/history/search/contacts/export/members/stats/timeline/doctor/key list/daemon"
+        ),
+    }
+}
+
 pub fn run() {
     let cli = Cli::parse();
     if let Err(e) = dispatch(cli) {
@@ -450,6 +488,7 @@ pub fn run() {
 }
 
 fn dispatch(cli: Cli) -> Result<()> {
+    ensure_safe_command(&cli.command)?;
     let base_with_meta = cli.with_meta;
     let base_debug_source = cli.debug_source;
     match cli.command {
