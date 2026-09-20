@@ -134,7 +134,7 @@ fn dpapi_protect_current_user(plaintext: &[u8]) -> Result<Vec<u8>> {
 
     if !output.pbData.is_null() {
         unsafe {
-            let _ = LocalFree(Some(HLOCAL(output.pbData as *mut core::ffi::c_void)));
+            let _ = LocalFree(HLOCAL(output.pbData as *mut core::ffi::c_void));
         }
     }
     Ok(result)
@@ -176,7 +176,7 @@ fn dpapi_unprotect_current_user(ciphertext: &[u8]) -> Result<Vec<u8>> {
     if !output.pbData.is_null() {
         unsafe {
             std::ptr::write_bytes(output.pbData, 0, output.cbData as usize);
-            let _ = LocalFree(Some(HLOCAL(output.pbData as *mut core::ffi::c_void)));
+            let _ = LocalFree(HLOCAL(output.pbData as *mut core::ffi::c_void));
         }
     }
     Ok(std::mem::take(&mut result))
