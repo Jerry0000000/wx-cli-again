@@ -14,7 +14,7 @@ cargo check
 
 ```bash
 cargo check --target x86_64-unknown-linux-gnu
-cargo check --target x86_64-pc-windows-gnu   # 在 macOS 上用这个，msvc 需要 MSVC 工具链
+cargo check --target x86_64-pc-windows-gnu   # 本地（macOS/Linux）用这个，msvc 需要 MSVC 工具链；CI 在 Windows runner 上检查 x86_64-pc-windows-msvc
 ```
 
 macOS 上需要一次性安装 target 和交叉编译器：
@@ -53,6 +53,10 @@ brew install mingw-w64   # 提供 x86_64-w64-mingw32-gcc，zstd-sys 等 C 依赖
 - [ ] Windows named pipe 代码 → 确认函数都已定义，trait import 齐全
 
 ## CI 结构
+
+`ci.yml`（push main / PR 触发）：check（linux-x86、linux-arm64、windows-msvc）、test（`cargo test`）、lint（fmt / clippy，暂为非阻塞）。
+
+`release.yml`（tag 触发）：
 
 ```
 check job（ubuntu）
